@@ -4,8 +4,8 @@ from crontab import CronTab
 from datetime import datetime
 from datetime import timedelta
 
-scaling_cron = CronTab(user='root')
-scale_jobs = scaling_cron.find_comment('Scheduling_Jobs')
+scaling_cron = CronTab(user="root")
+scale_jobs = scaling_cron.find_comment("Scheduling_Jobs")
 
 print("[INFO]", datetime.now(), "Running the Jobs of the last 5 minutes")
 
@@ -14,7 +14,9 @@ for job in scale_jobs:
     schedule = str(schedule.get_prev())
     schedule = time.strptime(schedule, "%Y-%m-%d %H:%M:%S")
     retry_execution_threshold = str(datetime.now() - timedelta(minutes=5))
-    retry_execution_threshold = time.strptime(retry_execution_threshold, "%Y-%m-%d %H:%M:%S.%f")
+    retry_execution_threshold = time.strptime(
+        retry_execution_threshold, "%Y-%m-%d %H:%M:%S.%f"
+    )
 
     if schedule > retry_execution_threshold:
         schedule_to_execute = str(job).split(";")[2]

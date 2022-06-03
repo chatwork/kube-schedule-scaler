@@ -10,10 +10,10 @@ RUN apt-get update \
 # set python 3 as the default python version
 RUN update-alternatives --install /usr/bin/python python /usr/bin/python3 1 \
     && update-alternatives --install /usr/bin/pip pip /usr/bin/pip3 1
+
+COPY ./requirements.txt /root/
 RUN pip3 install --upgrade pip requests setuptools pipenv
-RUN pip3 install kubernetes==23.6.0
-RUN pip3 install python-crontab==2.6.0
-RUN pip3 install croniter==1.3.5
+RUN pip3 install -r /root/requirements.txt
 
 ADD schedule_scaling /root/schedule_scaling
 COPY ./run_missed_jobs.py /root

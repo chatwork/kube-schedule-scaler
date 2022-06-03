@@ -7,7 +7,7 @@ import os
 
 time.sleep(random.uniform(1, 10))
 
-if os.getenv('KUBERNETES_SERVICE_HOST'):
+if os.getenv("KUBERNETES_SERVICE_HOST"):
     # ServiceAccountの権限で実行する
     config.load_incluster_config()
 else:
@@ -15,19 +15,36 @@ else:
     config.load_kube_config()
 
 v1 = client.AppsV1Api()
+
+time = "%(time)s"
+namespace = "%(namespace)s"
+name = "%(name)s"
 replicas = %(replicas)d
-body = {'spec': {'replicas': replicas}}
 
 if replicas > -1:
+    body = {"spec": {"replicas": replicas}}
     try:
-      v1.patch_namespaced_deployment("%(name)s", "%(namespace)s", body)
-      #api_response = v1.patch_namespaced_deployment("%(name)s", "%(namespace)s", body)
-      #print(api_response)
-    except ApiException as e:
-      print("[ERROR]", datetime.datetime.now(),'deployment %(namespace)s/%(name)s has not been patched',e)
+        v1.patch_namespaced_deployment(name, namespace, body)
+    except ApiException as err:
+        print(
+            "[ERROR]",
+            datetime.datetime.now(),
+            "deployment default/reserve-node has not been patched",
+            err,
+        )
 
-deployment = v1.read_namespaced_deployment("%(name)s","%(namespace)s")
+deployment = v1.read_namespaced_deployment(name, namespace)
 if deployment.spec.replicas == replicas:
-  print("[INFO]", datetime.datetime.now(), 'Deployment %(namespace)s/%(name)s has been scaled successfully to %(replicas)s replica at', %(time)s)
+    print(
+        "[INFO]",
+        datetime.datetime.now(),
+        "Deployment {}/{} has been scaled successfully to {} replica at {}".format(
+            namespace, name, replicas, time
+        ),
+    )
 else:
-  print("[ERROR]", datetime.datetime.now(), 'Something went wrong... deployment %(namespace)s/%(name)s has not been scaled to %(replicas)s')
+    print(
+        "[ERROR]",
+        datetime.datetime.now(),
+        "Something went wrong... deployment %(namespace)s/%(name)s has not been scaled to %(replicas)s"
+    )

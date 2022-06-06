@@ -10,16 +10,9 @@ import urllib.request
 from crontab import CronTab
 import datetime
 
-EXECUTION_TIME = 'datetime.datetime.now().strftime("%d-%m-%Y %H:%M UTC")'
+deployment_script = os.environ["CRON_SCRIPT_PATH_BASE"] + "/deployment-script.py"
+hpa_script = os.environ["CRON_SCRIPT_PATH_BASE"] + "/hpa-script.py"
 schedule_actions_annotation = "zalando.org/schedule-actions"
-temp__dir = "/tmp/scaling_jobs"
-
-
-def create_job_directory():
-    """This directory will hold the temp python scripts to execute the scaling jobs"""
-    if os.path.isdir(temp__dir):
-        shutil.rmtree(temp__dir)
-    pathlib.Path(temp__dir).mkdir(parents=True, exist_ok=True)
 
 
 def clear_cron():
@@ -103,29 +96,20 @@ def deployment_job_creator():
                     i, deployment, namespace, replicas, schedule
                 ),
             )
-
-            with open(
-                "/root/schedule_scaling/templates/deployment-script.py", "r"
-            ) as script:
-                script = script.read()
-            deployment_script = script % {
-                "namespace": namespace,
-                "name": deployment,
-                "replicas": int(replicas),
-                "time": EXECUTION_TIME,
-            }
-            script_creator = open(
-                temp__dir + "/%s-deployment_%s-%s.py" % (namespace, deployment, i), "w"
-            )
-            script_creator.write(deployment_script)
-            script_creator.close()
             cmd = [
-                "sleep 1 ; . /root/.profile ; /usr/bin/python",
-                script_creator.name,
+                ". /root/.profile ; python3",
+                deployment_script,
+                "--namespace",
+                namespace,
+                "--deployment",
+                deployment,
+                "--replicas",
+                replicas,
                 "2>&1 | tee -a",
                 os.environ["SCALING_LOG_FILE"],
             ]
             cmd = " ".join(map(str, cmd))
+            # print(cmd)
             scaling_cron = CronTab(user="root")
             job = scaling_cron.new(command=cmd)
             try:
@@ -184,27 +168,52 @@ def hpa_job_creator():
                 ),
             )
 
-            with open("/root/schedule_scaling/templates/hpa-script.py", "r") as script:
-                script = script.read()
-            hpa_script = script % {
-                "namespace": namespace,
-                "name": hpa,
-                "minReplicas": int(minReplicas or -1),
-                "maxReplicas": int(maxReplicas or -1),
-                "time": EXECUTION_TIME,
-            }
-            script_creator = open(
-                temp__dir + "/%s-hpa_%s-%s.py" % (namespace, hpa, i), "w"
-            )
-            script_creator.write(hpa_script)
-            script_creator.close()
-            cmd = [
-                "sleep 1 ; . /root/.profile ; /usr/bin/python",
-                script_creator.name,
-                "2>&1 | tee -a",
-                os.environ["SCALING_LOG_FILE"],
-            ]
+            if minReplicas is not None and maxReplicas is not None:
+                cmd = [
+                    ". /root/.profile ; python3",
+                    hpa_script,
+                    "--namespace",
+                    namespace,
+                    "--hpa",
+                    hpa,
+                    "--min_replicas",
+                    minReplicas,
+                    "--max_replicas",
+                    maxReplicas,
+                    "2>&1 | tee -a",
+                    os.environ["SCALING_LOG_FILE"],
+                ]
+
+            elif minReplicas is not None:
+                cmd = [
+                    ". /root/.profile ; python3",
+                    hpa_script,
+                    "--namespace",
+                    namespace,
+                    "--hpa",
+                    hpa,
+                    "--min_replicas",
+                    minReplicas,
+                    "2>&1 | tee -a",
+                    os.environ["SCALING_LOG_FILE"],
+                ]
+
+            elif maxReplicas is not None:
+                cmd = [
+                    ". /root/.profile ; python3",
+                    hpa_script,
+                    "--namespace",
+                    namespace,
+                    "--hpa",
+                    hpa,
+                    "--max_replicas",
+                    maxReplicas,
+                    "2>&1 | tee -a",
+                    os.environ["SCALING_LOG_FILE"],
+                ]
+
             cmd = " ".join(map(str, cmd))
+            # print(cmd)
             scaling_cron = CronTab(user="root")
             job = scaling_cron.new(command=cmd)
             try:
@@ -264,16 +273,16 @@ def parse_schedules(schedules, identifier):
         return []
 
 
-if __name__ == "__main__":
-
+def main():
     if os.getenv("KUBERNETES_SERVICE_HOST"):
-        # ServiceAccountの権限で実行する
         config.load_incluster_config()
     else:
-        # $HOME/.kube/config から読み込む
         config.load_kube_config()
 
-    create_job_directory()
     clear_cron()
     deployment_job_creator()
     hpa_job_creator()
+
+
+if __name__ == "__main__":
+    main()

@@ -13,6 +13,8 @@ if [ ! -e ${SCALING_LOG_FILE} ]; then
 fi
 
 # Starting Cron
+export CRON_SCRIPT_PATH_BASE="/root/schedule_scaling"
+
 /usr/sbin/cron -f &
 
 cron_pid=$!
@@ -45,12 +47,12 @@ echo "
 # Running the main Script at the beginning
 datetime=`date "+%Y-%m-%d %H:%M:%S.%6N"`
 echo "[INFO] $datetime Running the main script at the beginning"
-/usr/bin/python /root/schedule_scaling/schedule_scaling.py >> ${SCALING_LOG_FILE} 2>&1
+python3 /root/schedule_scaling/schedule_scaling.py >> ${SCALING_LOG_FILE} 2>&1
 
 # Run once at the startup of container
 datetime=`date "+%Y-%m-%d %H:%M:%S.%6N"`
 echo "[INFO] $datetime Run once at the startup of container"
-/usr/bin/python /root/run_missed_jobs.py >> ${SCALING_LOG_FILE}
+python3 /root/run_missed_jobs.py >> ${SCALING_LOG_FILE}
 
 trap 'jobs -p | xargs kill; sleep 10; echo === Finish this script ===; exit 0' SIGTERM
 

@@ -40,7 +40,7 @@ jobs:
         uses: docker/build-push-action@v3
         with:
           context: .
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/arm64
           push: true
           tags: chatwork/kube-schedule-scaler:${{ steps.prepare_build_arg.outputs.CURRENT_TAG }}
           cache-from: type=local,src=/tmp/.buildx-cache

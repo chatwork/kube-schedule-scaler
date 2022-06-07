@@ -9,17 +9,18 @@ import re
 import urllib.request
 from crontab import CronTab
 import datetime
+import time
 
 deployment_script = os.environ["CRON_SCRIPT_PATH_BASE"] + "/deployment-script.py"
 hpa_script = os.environ["CRON_SCRIPT_PATH_BASE"] + "/hpa-script.py"
 schedule_actions_annotation = "zalando.org/schedule-actions"
 
 
-def clear_cron():
+def clear_cron(comment):
     """This is needed so that if any one removes his scaling action
     it should not be trigger again"""
     my_cron = CronTab(user="root")
-    my_cron.remove_all(comment="Scheduling_Jobs")
+    my_cron.remove_all(comment=comment)
     my_cron.write()
 
 
@@ -73,7 +74,22 @@ def deployment_job_creator():
     """Create CronJobs for configured Deployments"""
 
     deployments__for_scale = deployments_for_scale()
-    print("[INFO]", datetime.datetime.now(), "Deployments collected for scaling: ")
+
+    # print("[INFO]", datetime.datetime.now(), "Deployments collected for scaling: ")
+    deployment_job_creator_file = "/tmp/deployment_job_creator.json"
+    if os.path.isfile(deployment_job_creator_file):
+        with open(deployment_job_creator_file, "r") as f:
+            old_deployments__for_scale = json.load(f)
+            if deployments__for_scale == old_deployments__for_scale:
+                #print(
+                #    "[INFO]",
+                #    datetime.datetime.now(),
+                #    "Deployments scale targets is no difference.",
+                #)
+                return
+
+    cron_comment = "Scheduling_Jobs_Deployment"
+    clear_cron(cron_comment)
     for namespace_deployment, schedules in deployments__for_scale.items():
         namespace = namespace_deployment.split("/")[0]
         deployment = namespace_deployment.split("/")[1]
@@ -89,13 +105,13 @@ def deployment_job_creator():
                 )
                 continue
             schedule = contents.get("schedule", None)
-            print(
-                "[INFO]",
-                datetime.datetime.now(),
-                "{}, Deployment: {}, Namespace: {}, Replicas: {}, Schedule: {}".format(
-                    i, deployment, namespace, replicas, schedule
-                ),
-            )
+            # print(
+            #    "[INFO]",
+            #    datetime.datetime.now(),
+            #    "{}, Deployment: {}, Namespace: {}, Replicas: {}, Schedule: {}".format(
+            #        i, deployment, namespace, replicas, schedule
+            #    ),
+            # )
             cmd = [
                 ". /root/.profile ; python3",
                 deployment_script,
@@ -113,8 +129,8 @@ def deployment_job_creator():
             scaling_cron = CronTab(user="root")
             job = scaling_cron.new(command=cmd)
             try:
+                job.set_comment(cron_comment)
                 job.setall(schedule)
-                job.set_comment("Scheduling_Jobs")
                 scaling_cron.write()
             except Exception:
                 print(
@@ -126,12 +142,35 @@ def deployment_job_creator():
                 )
                 pass
 
+    with open(deployment_job_creator_file, "w") as f:
+        json.dump(deployments__for_scale, f)
+
+    print("[INFO]", datetime.datetime.now(), "Deployment cronjob for scaling: ")
+    my_cron = CronTab(user="root")
+    for cron in my_cron.find_comment(comment=cron_comment):
+        print("[INFO]", datetime.datetime.now(), cron)
+
 
 def hpa_job_creator():
     """Create CronJobs for configured hpa"""
 
     hpa__for_scale = hpa_for_scale()
-    print("[INFO]", datetime.datetime.now(), "HPA collected for scaling: ")
+    # print("[INFO]", datetime.datetime.now(), "HPA collected for scaling: ")
+
+    hpa_job_creator_file = "/tmp/hpa_job_creator.json"
+    if os.path.isfile(hpa_job_creator_file):
+        with open(hpa_job_creator_file, "r") as f:
+            old_hpa__for_scale = json.load(f)
+            if hpa__for_scale == old_hpa__for_scale:
+                #print(
+                #    "[INFO]",
+                #    datetime.datetime.now(),
+                #    "HPA scale targets is no difference.",
+                #)
+                return
+
+    cron_comment = "Scheduling_Jobs_HPA"
+    clear_cron(cron_comment)
     for namespace_hpa, schedules in hpa__for_scale.items():
         namespace = namespace_hpa.split("/")[0]
         hpa = namespace_hpa.split("/")[1]
@@ -160,13 +199,13 @@ def hpa_job_creator():
                 continue
 
             schedule = contents.get("schedule", None)
-            print(
-                "[INFO]",
-                datetime.datetime.now(),
-                "{}, HPA: {}, Namespace: {}, MinReplicas: {}, MaxReplicas: {}, Schedule: {}".format(
-                    i, hpa, namespace, minReplicas, maxReplicas, schedule
-                ),
-            )
+            # print(
+            #    "[INFO]",
+            #    datetime.datetime.now(),
+            #    "{}, HPA: {}, Namespace: {}, MinReplicas: {}, MaxReplicas: {}, Schedule: {}".format(
+            #        i, hpa, namespace, minReplicas, maxReplicas, schedule
+            #    ),
+            # )
 
             if minReplicas is not None and maxReplicas is not None:
                 cmd = [
@@ -217,8 +256,8 @@ def hpa_job_creator():
             scaling_cron = CronTab(user="root")
             job = scaling_cron.new(command=cmd)
             try:
+                job.set_comment(cron_comment)
                 job.setall(schedule)
-                job.set_comment("Scheduling_Jobs")
                 scaling_cron.write()
             except Exception:
                 print(
@@ -227,6 +266,14 @@ def hpa_job_creator():
                     "HPA: {} has syntax error in the schedule".format(hpa),
                 )
                 pass
+
+    with open(hpa_job_creator_file, "w") as f:
+        json.dump(hpa__for_scale, f)
+
+    print("[INFO]", datetime.datetime.now(), "HPA cronjob for scaling: ")
+    my_cron = CronTab(user="root")
+    for cron in my_cron.find_comment(comment=cron_comment):
+        print("[INFO]", datetime.datetime.now(), cron)
 
 
 def parse_content(content, identifier):
@@ -279,10 +326,8 @@ def main():
     else:
         config.load_kube_config()
 
-    clear_cron()
     deployment_job_creator()
     hpa_job_creator()
-
 
 if __name__ == "__main__":
     main()

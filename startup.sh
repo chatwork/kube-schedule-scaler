@@ -41,18 +41,21 @@ datetime=`date "+%Y-%m-%d %H:%M:%S.%6N"`
 echo "[INFO] $datetime Creating the main cron"
 echo "
 ## The main script to collect the deployments to be scaled ##
-*/3 * * * * sleep 7; . /root/.profile; /usr/bin/python /root/schedule_scaling/schedule_scaling.py >> ${SCALING_LOG_FILE} 2>&1
+* * * * * sleep 7; . /root/.profile; python3 /root/schedule_scaling/schedule_scaling.py >> ${SCALING_LOG_FILE} 2>&1
 " | /usr/bin/crontab -
 
 # Running the main Script at the beginning
 datetime=`date "+%Y-%m-%d %H:%M:%S.%6N"`
 echo "[INFO] $datetime Running the main script at the beginning"
-python3 /root/schedule_scaling/schedule_scaling.py >> ${SCALING_LOG_FILE} 2>&1
+python3 /root/schedule_scaling/schedule_scaling.py
+
+#echo "[INFO] $datetime confirm cronjob for the begging"
+#crontab -l
 
 # Run once at the startup of container
 datetime=`date "+%Y-%m-%d %H:%M:%S.%6N"`
 echo "[INFO] $datetime Run once at the startup of container"
-python3 /root/run_missed_jobs.py >> ${SCALING_LOG_FILE}
+sleep 2; python3 /root/run_missed_jobs.py >> ${SCALING_LOG_FILE} 2>&1
 
 trap 'jobs -p | xargs kill; sleep 10; echo === Finish this script ===; exit 0' SIGTERM
 

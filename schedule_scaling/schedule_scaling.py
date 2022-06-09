@@ -1,18 +1,17 @@
 """ Collecting Deployments configured for Scaling """
 import os
-import pathlib
 import json
 import logging
-import shutil
 from kubernetes import client, config
+from kubernetes.client.rest import ApiException
 import re
 import urllib.request
 from crontab import CronTab
 import datetime
-import time
+from socket import gethostname
 
-deployment_script = os.environ["CRON_SCRIPT_PATH_BASE"] + "/deployment-script.py"
-hpa_script = os.environ["CRON_SCRIPT_PATH_BASE"] + "/hpa-script.py"
+deployment_script = os.getenv("CRON_SCRIPT_PATH_BASE") + "/deployment-script.py"
+hpa_script = os.getenv("CRON_SCRIPT_PATH_BASE") + "/hpa-script.py"
 schedule_actions_annotation = "zalando.org/schedule-actions"
 
 
@@ -75,17 +74,14 @@ def deployment_job_creator():
 
     deployments__for_scale = deployments_for_scale()
 
-    # print("[INFO]", datetime.datetime.now(), "Deployments collected for scaling: ")
     deployment_job_creator_file = "/tmp/deployment_job_creator.json"
+    configmap_name = "kube-schedule-scaler-deployment-status"
     if os.path.isfile(deployment_job_creator_file):
         with open(deployment_job_creator_file, "r") as f:
             old_deployments__for_scale = json.load(f)
             if deployments__for_scale == old_deployments__for_scale:
-                #print(
-                #    "[INFO]",
-                #    datetime.datetime.now(),
-                #    "Deployments scale targets is no difference.",
-                #)
+                patch_configmap(configmap_name=configmap_name)
+
                 return
 
     cron_comment = "Scheduling_Jobs_Deployment"
@@ -132,18 +128,27 @@ def deployment_job_creator():
                 job.set_comment(cron_comment)
                 job.setall(schedule)
                 scaling_cron.write()
-            except Exception:
+            except Exception as err:
                 print(
                     "[ERROR]",
                     datetime.datetime.now(),
                     "Deployment: {} has syntax error in the schedule".format(
                         deployment
                     ),
+                    err,
                 )
                 pass
 
     with open(deployment_job_creator_file, "w") as f:
-        json.dump(deployments__for_scale, f)
+        json.dump(deployments__for_scale, f, indent=2)
+
+    create_status_configmap(
+        json.dumps(deployments__for_scale, indent=2), configmap_name
+    )
+    patch_configmap(
+        configmap_name=configmap_name,
+        configmap_data=json.dumps(deployments__for_scale, indent=2),
+    )
 
     print("[INFO]", datetime.datetime.now(), "Deployment cronjob for scaling: ")
     my_cron = CronTab(user="root")
@@ -158,15 +163,13 @@ def hpa_job_creator():
     # print("[INFO]", datetime.datetime.now(), "HPA collected for scaling: ")
 
     hpa_job_creator_file = "/tmp/hpa_job_creator.json"
+    configmap_name = "kube-schedule-scaler-hpa-status"
     if os.path.isfile(hpa_job_creator_file):
         with open(hpa_job_creator_file, "r") as f:
             old_hpa__for_scale = json.load(f)
             if hpa__for_scale == old_hpa__for_scale:
-                #print(
-                #    "[INFO]",
-                #    datetime.datetime.now(),
-                #    "HPA scale targets is no difference.",
-                #)
+                patch_configmap(configmap_name=configmap_name)
+
                 return
 
     cron_comment = "Scheduling_Jobs_HPA"
@@ -259,16 +262,23 @@ def hpa_job_creator():
                 job.set_comment(cron_comment)
                 job.setall(schedule)
                 scaling_cron.write()
-            except Exception:
+            except Exception as err:
                 print(
                     "[ERROR]",
                     datetime.datetime.now(),
                     "HPA: {} has syntax error in the schedule".format(hpa),
+                    err,
                 )
                 pass
 
     with open(hpa_job_creator_file, "w") as f:
-        json.dump(hpa__for_scale, f)
+        json.dump(hpa__for_scale, f, indent=2)
+
+    create_status_configmap(json.dumps(hpa__for_scale, indent=2), configmap_name)
+    patch_configmap(
+        configmap_name=configmap_name,
+        configmap_data=json.dumps(hpa__for_scale, indent=2),
+    )
 
     print("[INFO]", datetime.datetime.now(), "HPA cronjob for scaling: ")
     my_cron = CronTab(user="root")
@@ -320,6 +330,93 @@ def parse_schedules(schedules, identifier):
         return []
 
 
+def _create_configmap_object(name, namespace, configmap_data):
+    # Configureate ConfigMap metadata
+    metadata = client.V1ObjectMeta(
+        name=name,
+        namespace=namespace,
+    )
+    configmap_object = client.V1ConfigMap(
+        api_version="v1",
+        kind="ConfigMap",
+        data=dict(schedules=configmap_data),
+        metadata=metadata,
+    )
+    return configmap_object
+
+
+def create_status_configmap(configmap_data, configmap_name):
+    v1 = client.CoreV1Api()
+
+    if os.getenv("NAMESPACE"):
+        namespace = os.getenv("NAMESPACE")
+    else:
+        namespace = "kube-system"
+
+    configmap_names = []
+    for configmap in v1.list_namespaced_config_map(namespace, watch=False).items:
+        configmap_names.append(configmap.metadata.name)
+
+    if configmap_name not in configmap_names:
+        configmap_object = _create_configmap_object(
+            configmap_name, namespace, configmap_data
+        )
+        try:
+            v1.create_namespaced_config_map(
+                namespace=namespace,
+                body=configmap_object,
+            )
+
+        except ApiException as e:
+            print(
+                "[ERROR]",
+                datetime.datetime.now(),
+                "{} has not created.".format(configmap_name),
+            )
+
+
+def patch_configmap(configmap_name, configmap_data=None):
+    v1 = client.CoreV1Api()
+
+    if configmap_data is None:
+        body = {
+            "metadata": {
+                "annotations": {
+                    "kube-schedule-scaler/last-updated": datetime.datetime.now(),
+                    "kube-schedule-scaler/checked-by": gethostname(),
+                }
+            }
+        }
+
+    else:
+        body = {
+            "metadata": {
+                "annotations": {
+                    "kube-schedule-scaler/last-updated": datetime.datetime.now(),
+                    "kube-schedule-scaler/checked-by": gethostname(),
+                }
+            },
+            "data": {
+                "schedules": configmap_data,
+            },
+        }
+
+    if os.getenv("NAMESPACE"):
+        namespace = os.getenv("NAMESPACE")
+    else:
+        namespace = "kube-system"
+
+    try:
+        v1.patch_namespaced_config_map(configmap_name, namespace, body)
+    except ApiException as err:
+        print(
+            "[ERROR]",
+            datetime.datetime.now(),
+            "{} has not patched.".format(configmap_name),
+            err,
+        )
+
+
 def main():
     if os.getenv("KUBERNETES_SERVICE_HOST"):
         config.load_incluster_config()
@@ -328,6 +425,7 @@ def main():
 
     deployment_job_creator()
     hpa_job_creator()
+
 
 if __name__ == "__main__":
     main()

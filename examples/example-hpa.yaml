@@ -1,0 +1,26 @@
+apiVersion: autoscaling/v2beta2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: example-hpa
+  namespace: default
+  annotations:
+    zalando.org/schedule-actions: |
+      [
+        {"schedule": "00 08 * * *", "minReplicas": "1", "maxReplicas": 3},
+        {"schedule": "30 23 * * *", "minReplicas": 2, "maxReplicas": "3"},
+        {"schedule": "00 09 * * *", "minReplicas": 1, "maxReplicas": "4"}
+      ]
+spec:
+  maxReplicas: 2
+  minReplicas: 1
+  metrics:
+    - resource:
+        name: cpu
+        target:
+          averageUtilization: 50
+          type: Utilization
+      type: Resource
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: example-deployment

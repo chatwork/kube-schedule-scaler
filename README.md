@@ -11,6 +11,10 @@ At the moment it supports reading the scaling definitions from directly in the a
 
 ## Usage
 
+### install
+
+https://github.com/chatwork/charts/tree/master/kube-schedule-scaler#tldr
+
 ### deployment
 
 Add the annotation to either your `Deployment`.
@@ -27,7 +31,7 @@ Add the annotation to either your `Deployment`.
     zalando.org/schedule-actions: '[{"schedule": "10 18 * * *", "minReplicas": "3"}]'
 ```
 
-## Available Fields 
+## Available Fields
 
 The following fields are available
 * `schedule` - Typical crontab format
@@ -102,4 +106,4 @@ spec:
         type: Utilization
         averageUtilization: 50
 ```
-  
+

@@ -3,6 +3,7 @@ MAINTAINER "sakamoto@chatwork.com"
 
 # Install python tools and dev packages
 RUN apt-get update \
+    && apt-get upgrade -y \
     && apt-get install -q -y --no-install-recommends  python3-pip python3-setuptools python3-wheel gcc cron tini \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*

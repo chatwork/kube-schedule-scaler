@@ -31,7 +31,7 @@ jobs:
         id: prepare_build_arg
         run: |
           CURRENT_TAG=${GITHUB_REF#refs/tags/}
-          echo ::set-output name=CURRENT_TAG::${CURRENT_TAG}
+          echo CURRENT_TAG=${CURRENT_TAG} >> $GITHUB_OUTPUT
 
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
